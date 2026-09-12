@@ -1,0 +1,8 @@
+# hearsay needs loraline for the radio. Clone it alongside, or:
+#   pip install pyserial pynacl
+# and put loraline on your PYTHONPATH.
+pyserial
+pynacl
+# Only for turning a photograph into a profile picture. Everything else works
+# without it.
+pillow
