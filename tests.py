@@ -2,7 +2,7 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hearsay.post import Post, write, BODY_LIMIT, HOP_LIMIT
+from hearsay.post import SEPARATOR, Post, write, BODY_LIMIT, HOP_LIMIT
 from hearsay.store import Store, HOLD, GIVE_PER_MEETING
 from loraline.crypto import Identity
 
@@ -251,5 +251,207 @@ with tempfile.TemporaryDirectory() as room:
     assert kept.picture == chosen.picture and kept.name == "a new name"
     assert kept.verify()
     ok("renaming carries the picture across rather than throwing it away")
+
+
+# ---------- pages ----------
+from hearsay.page import (Page, write as write_page, to_html, links, resolve,
+                          BODY_LIMIT)
+
+doc = """# The ledge
+
+There is a spot below the rocks nobody uses.
+
+* follow the sand north
+* past the reeds
+
+> the bass are there at dusk
+
+=> tides when to go
+=> a1b2c3/bait somebody else on bait
+"""
+sheet = write_page(hank, "The Ledge!", "The ledge", doc, T)
+assert sheet.name == "the-ledge" and sheet.at == f"{hank.address}/the-ledge"
+assert sheet.verify()
+again = Page.from_wire(sheet.to_wire())
+assert again.id == sheet.id and again.verify()
+ok(f"a page is signed like a post, in {len(sheet.to_wire())} characters")
+
+edited = Page.from_wire(sheet.to_wire())
+edited.body += "\nand free beer"
+assert not edited.verify()
+stolen = Page.from_wire(sheet.to_wire())
+stolen.keys = (liar.public_b64, liar.verify_b64)
+assert not stolen.verify()
+ok("and cannot be changed or claimed by somebody else either")
+
+# A bare name is the same author's; an address before the slash is somebody
+# else's; anything that is not an address is a name, whatever it looks like.
+assert resolve("tides", hank.address) == f"{hank.address}/tides"
+assert resolve(f"{dave.address}/bait", hank.address) == f"{dave.address}/bait"
+assert resolve("https://example.com/x", hank.address).startswith(hank.address + "/")
+assert resolve("../../etc/passwd", hank.address) == f"{hank.address}/etc-passwd"
+ok("a link is a page on this radio or it is a page name, never a place")
+
+# Nothing a document can say may produce a reference off the radio, because a
+# browser would fetch it and then this is a slower way of using the old
+# internet rather than a network that stands on its own.
+nasty = write_page(hank, "x", "x",
+                   '=> https://example.com/thing look\n'
+                   '<img src="https://evil/x">\n'
+                   '<script>alert(1)</script>\n', T)
+html = to_html(nasty)
+assert "<script>" not in html and "<img" not in html
+assert "&lt;script&gt;" in html, "it is shown as text, which is what it is"
+# What matters is live attributes, not the letters h-t-t-p. A web address
+# printed as words is a page saying something; one in an href is a browser
+# leaving the radio.
+import re as _re
+for attribute in _re.findall(r'(?:href|src)="([^"]*)"', html):
+    assert attribute.startswith("/page/"), attribute
+ok("and no document can make a browser fetch anything off the radio")
+
+# a page is something somebody keeps, so a newer one replaces it
+shelf = Store()
+assert shelf.shelve(sheet)
+assert shelf.page_at(sheet.at).title == "The ledge"
+later = write_page(hank, "the-ledge", "The ledge, again", doc + "\nmore", T + 900)
+assert shelf.shelve(later)
+assert shelf.page_at(sheet.at).title == "The ledge, again"
+assert len(shelf.pages) == 1, "the old one is not kept beside the new one"
+earlier = write_page(hank, "the-ledge", "stale", doc, T - 900)
+assert not shelf.shelve(earlier)
+ok("a newer page replaces the one it is a new version of, and an older is refused")
+
+# and one at a time, because one is ten minutes of owed silence
+crowd = Store()
+for n in range(6):
+    crowd.shelve(write_page(hank, f"page-{n}", f"Page {n}", f"# {n}\nsomething", T + n))
+empty = Store()
+have = crowd.pages_line().split("|", 1)[1]
+want = empty.want_page_line(have).split("|", 1)[1]
+handed = crowd.give_page_lines(want, dave.address)
+assert len(handed) == 1, len(handed)
+got = Page.from_wire(handed[0].split("|", 1)[1])
+assert empty.shelve(got) and dave.address in got.hops and got.verify()
+ok("a meeting hands over one page: two kilobytes is ten minutes of owed silence")
+
+
+# ---------- finding a page without typing an address ----------
+# An address is the true name of a person and cannot be anything else: a nick
+# is a label and anybody can claim one, so a link never resolves against a
+# name. But nobody should have to type an address either.
+known = {hank.address: "hank", dave.address: "mira"}
+naming = lambda address: known.get(address, address)
+signed = write_page(hank, "x", "x",
+                    f"=> tides when to go\n=> {dave.address}/bait mira on bait\n"
+                    f"=> {mira.address}/x somebody nobody knows\n", T)
+shown = to_html(signed, naming=naming)
+assert f'href="/page/{hank.address}/tides"' in shown, "followed by address"
+assert "<i>hank/tides</i>" in shown, "read as a person"
+assert "<i>mira/bait</i>" in shown
+assert f"<i>{mira.address}/x</i>" in shown, "somebody unknown stays their address"
+ok("a link is followed by address and read as whoever you know them as")
+
+plain = to_html(signed)
+assert f"<i>{hank.address}/tides</i>" in plain
+ok("and with nobody to name, the address is what it says")
+
+
+# ---------- how long an address is ----------
+from loraline.crypto import ADDRESS_BYTES
+
+assert ADDRESS_BYTES * 8 >= 64, "twenty-four bits is six minutes of grinding"
+assert len(hank.address) == ADDRESS_BYTES * 2
+# A cross-author link has to resolve against whatever an address actually is,
+# not against a length somebody typed once. This was a fixed six and stopped
+# matching anything real the moment addresses grew.
+elsewhere = resolve(f"{dave.address}/bait", hank.address)
+assert elsewhere == f"{dave.address}/bait", elsewhere
+assert resolve("a1b2c3/bait", hank.address).startswith(hank.address), \
+    "something that is not an address is a page name, whatever it looks like"
+ok(f"an address is {ADDRESS_BYTES*8} bits and a link resolves against that length")
+
+
+# ---------- the pages that came with the program ----------
+from hearsay import manual
+from hearsay.page import HOME as _HOME
+
+# Having each node write itself a reference page would mean every node on the
+# radio carrying the same text under a different name, and two people meeting
+# spending ten minutes of owed silence swapping documents they both had.
+assert manual.has("index") and manual.has("writing")
+for name, title in manual.listing():
+    built = Page(author=_HOME, name=name, title=title, written=0,
+                 body=manual.body(name))
+    shown = to_html(built, naming=lambda a: a)
+    for attribute in _re.findall(r'(?:href|src)="([^"]*)"', shown):
+        assert attribute.startswith("/page/"), attribute
+    assert not built.signature, "a built-in page is not signed by anybody"
+ok(f"{len(manual.listing())} pages come with the program, none of them signed")
+
+# and a written page can point into them
+assert resolve("here/writing", hank.address) == "here/writing"
+assert resolve("writing", hank.address) == f"{hank.address}/writing"
+assert resolve("herefordshire/x", hank.address).startswith(hank.address)
+ok("a written page can link into the manual, and only by that exact name")
+
+# the manual is never offered on the air
+shelf_only = Store()
+shelf_only.shelve(write_page(hank, "bread", "Bread", "# Bread\nThursdays.", T))
+offered = shelf_only.pages_line()
+assert _HOME not in offered
+ok("and the manual is never named in what a node offers")
+
+
+# ---------- answering somebody ----------
+question = write(hank, "anything in the cellar?", T)
+answer = write(mira, "still nothing", T + 300, answers=question.id)
+assert answer.answers == question.id and answer.verify()
+plain = write(mira, "still nothing", T + 300)
+assert len(answer.to_wire()) - len(plain.to_wire()) == 6
+ok("a reply is six characters, and it rides in a frame that was going anyway")
+
+# What it answers is inside the signature, so a carrier cannot re-point a
+# reply at a different question and make somebody appear to have answered it.
+moved = Post.from_wire(answer.to_wire())
+moved.answers = "ffffff"
+assert not moved.verify()
+ok("and what it answers is signed, so nobody can re-point it")
+
+# a post written before replies existed has eight fields, not nine
+older = SEPARATOR.join(["1", hank.address, str(T), "hello", "", "", "", ""])
+assert Post.from_wire(older) is not None
+assert write(mira, "x", T, answers="zz;drop table").answers == ""
+ok("older posts still read, and a broken id is no id at all")
+
+threaded = Store()
+for each in (question, answer, write(hank, "try the back wall", T + 600,
+                                     answers=question.id)):
+    threaded.add(each)
+assert threaded.by_id(question.id).body == "anything in the cellar?"
+assert [p.body for p in threaded.answers_to(question.id)] == \
+    ["still nothing", "try the back wall"]
+ok("and a node can find what answers what, in the order it was written")
+
+# ---------- asking for a page by name ----------
+from hearsay.store import ASK_PAGE
+
+holder, seeker = Store(), Store()
+wanted = write_page(hank, "tides", "Tides", "# Tides\ndusk, mostly.", T)
+holder.shelve(wanted)
+# Everything else is offered rather than requested, which leaves a link to a
+# page nobody carried as a dead end.
+seeker.note_wanted(wanted.at)
+asked = seeker.ask_line()
+assert asked.startswith(ASK_PAGE) and wanted.at in asked
+handed = holder.answer_asked(asked.split("|", 1)[1], dave.address)
+assert len(handed) == 1
+assert seeker.shelve(Page.from_wire(handed[0].split("|", 1)[1]))
+assert not seeker.asked_for, "once it arrives, stop asking"
+ok("a page can be asked for by name, and the asking stops when it arrives")
+
+assert Store().answer_asked("ffffffffffffffff/nope", "x") == []
+assert not seeker.ask_line().split("|", 1)[1]
+ok("asking after something nobody holds costs one short line and no more")
 
 print(f"\nALL PASS  ({PASSED} checks)")

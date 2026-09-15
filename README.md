@@ -27,7 +27,11 @@ write. But it settled three things before any of this was built:
 
 ## What is provable and what is not
 
-A post is signed once by its author and the signature travels with it for ever.
+A post is signed once by its author and the signature travels with it for
+ever. An address is sixteen hex characters, sixty-four bits, because it is
+what a signature is checked against: at six it was about six minutes of
+offline grinding to make a keypair that could write in somebody else's name,
+and being on a radio did not help at all.
 A carrier can drop a post, refuse to pass it on, or lie about where they got
 it. What they cannot do is change a word of it or write one in somebody else's
 name: the address is recomputed from the keys carried with the post, so an
@@ -78,6 +82,101 @@ arrives already looking like somebody rather than like a blank.
 Faces are offered rather than asked for, a few at a time, because a post from
 somebody with no face beside it is a worse thing than a few hundred characters
 spent unprompted. The newest profile wins, and an older one cannot undo it.
+
+## The pages that come with it
+
+Five of them, at `/page/here/…`: what is here, writing a page, which
+frequency, when nobody appears, and how a page travels.
+
+They are local. Served from the program, never signed, never offered to
+anybody, and they cost no radio time. Having each node write itself a
+reference page would mean every node carrying the same text under a different
+name, and two people meeting spending ten minutes of owed silence swapping
+documents they both already had.
+
+Everybody who can read a page has the program, and the program is where these
+live. That leaves the channel for the only thing worth spending it on: what
+somebody actually wrote.
+
+A written page can link into them with `=> here/writing`, which resolves to
+the reader's own copy.
+
+## Answering somebody
+
+A post can carry the id of the post it answers: six characters, signed along
+with the words, and free, because it rides inside a frame that was going out
+anyway.
+
+It has to be signed. Otherwise a carrier could attach somebody's reply to a
+different question, which is a cheap way to make anybody appear to have said
+something unpleasant.
+
+Three hops away, the post being answered often has not arrived. The feed says
+so rather than pretending a reply was never a reply.
+
+## Asking for a page
+
+Everything else here is offered rather than requested, which works for things
+people write and not at all for a link you followed to a page that never came.
+So a page can be asked for by name: the reader offers it where a missing page
+would otherwise be a dead end, the ask rides along at the next meeting, and
+anybody holding that page hands it over.
+
+The asking stops as soon as it arrives.
+
+## Pages
+
+A post is a sentence and a page is a document, and they travel the same way:
+signed once, held by whoever has heard it, handed on to whoever comes near.
+That is the whole difference, so it is not a separate thing.
+
+The arithmetic settles the format. Two kilobytes of text is twenty frames, six
+seconds on air and ten minutes of owed silence; a node can put out about six an
+hour. An ordinary web page of two hundred kilobytes is seventeen hours. So:
+text, four kilobytes at most, and a meeting hands over one page rather than
+six.
+
+Six kinds of line and nothing else:
+
+```
+# heading
+## smaller heading
+> something quoted
+* a thing in a list
+=> name what it is        a link, here or on somebody's node
+```                       everything until the next fence is left alone
+anything else             a paragraph
+```
+
+**Nothing here is HTML and no document can point off the radio.** A carried
+page that could name a picture on the internet would have your browser quietly
+fetch it, and then this is not a network that stands on its own, it is a slower
+way of using the old one. The format cannot express a reference to anywhere
+else, so it cannot be made to: a link is either a page on this radio or it is a
+page name, whatever it looks like, and `=> https://example.com/x` becomes a
+page nobody has written.
+
+The node turns pages into markup itself, which is why an ordinary browser is
+safe to read them with. It never sees anything the node did not write, so there
+is nothing to be gained from building a browser.
+
+Read one at `/page/<address>/<name>`, but nobody should ever have to type
+that. An address alone goes to somebody's front page, `/pages` lists
+everything held with faces beside it, and inside a document a link reads as
+`hank/tides` while pointing at `/page/840f29/tides`.
+
+The address is what a link resolves against and always will be: a nick is a
+label, anybody can claim one, and two people called hank would collide. What
+it is *shown* as is whoever you know that address to be, and somebody you have
+never heard of stays six hex characters, which is the honest thing for them to
+be.
+
+A page you do not hold is not an error: it is somewhere the network has not
+carried anything to you from yet, and it says so.
+
+A newer page by the same author with the same name replaces the older one,
+because a page is something somebody keeps rather than something they said
+once.
 
 ## What a node holds
 
