@@ -23,6 +23,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .page import Page
 from .post import Post
 from .profile import Profile
 
@@ -30,8 +31,16 @@ HOLD = 200               # posts kept, at most
 OFFER = 40               # ids named in one breath
 GIVE_PER_MEETING = 6     # posts handed over before waiting to meet again
 
+# Pages are twenty times the size of a post and read far less often, so a
+# node holds fewer of them and parts with one at a time. Two kilobytes is ten
+# minutes of owed silence; handing over six would be an hour of the channel.
+HOLD_PAGES = 40
+GIVE_PAGES_PER_MEETING = 1
+
 HAVE, WANT, GIVE = "h", "w", "g"
 FACE = "f"               # a profile, offered without being asked for
+PAGES, WANT_PAGE, GIVE_PAGE = "p", "q", "r"
+ASK_PAGE = "a"           # by name, for a page you have only seen a link to
 
 
 @dataclass
@@ -41,6 +50,9 @@ class Store:
     posts: dict = field(default_factory=dict)      # id -> Post
     seen: set = field(default_factory=set)         # ids we once held
     faces: dict = field(default_factory=dict)      # author -> Profile
+    pages: dict = field(default_factory=dict)      # id -> Page
+    read_pages: set = field(default_factory=set)   # page ids once held
+    asked_for: set = field(default_factory=set)    # author/name wanted, by name
     path: object = None                            # where it lives on disk
 
     # -- keeping -----------------------------------------------------------
@@ -98,6 +110,15 @@ class Store:
         ordered = sorted(self.posts.values(), key=lambda p: (-p.written, p.id))
         self.posts = {p.id: p for p in ordered[:HOLD]}
 
+    def by_id(self, post_id: str):
+        """One post by its id, if it is still held."""
+        return self.posts.get(post_id)
+
+    def answers_to(self, post_id: str) -> list:
+        """Everything held that replies to this one, oldest first."""
+        return sorted((p for p in self.posts.values() if p.answers == post_id),
+                      key=lambda p: (p.written, p.id))
+
     def recent(self, limit: int = OFFER) -> list:
         return sorted(self.posts.values(),
                       key=lambda p: (-p.written, p.id))[:limit]
@@ -144,6 +165,94 @@ class Store:
         return out
 
     # -- reading ------------------------------------------------------------
+
+    # -- pages -------------------------------------------------------------
+
+    def shelve(self, page: Page) -> bool:
+        """Take a page in, if it is really that person's.
+
+        A newer page by the same author with the same name replaces the older
+        one: a page is a thing somebody keeps rather than a thing they said
+        once, which is the whole difference from a post.
+        """
+        if page is None or not page.verify():
+            return False
+        here = self.pages.get(page.id)
+        if here is not None:
+            if page.distance > here.distance:
+                here.hops = page.hops
+            return False
+        older = [p for p in self.pages.values()
+                 if p.at == page.at and p.written < page.written]
+        newer = [p for p in self.pages.values()
+                 if p.at == page.at and p.written >= page.written]
+        if newer:
+            return False          # we already have this one or a later one
+        for stale in older:
+            self.pages.pop(stale.id, None)
+        self.pages[page.id] = page
+        self.read_pages.add(page.id)
+        self.asked_for.discard(page.at)
+        if len(self.pages) > HOLD_PAGES:
+            ordered = sorted(self.pages.values(), key=lambda p: (-p.written, p.id))
+            self.pages = {p.id: p for p in ordered[:HOLD_PAGES]}
+        return True
+
+    def page_at(self, at: str):
+        """Somebody's page by name, the newest we hold of it."""
+        found = [p for p in self.pages.values() if p.at == at]
+        return max(found, key=lambda p: p.written) if found else None
+
+    def shelf(self, limit: int = HOLD_PAGES) -> list:
+        return sorted(self.pages.values(), key=lambda p: (-p.written, p.at))[:limit]
+
+    def pages_line(self) -> str:
+        return PAGES + "|" + ",".join(p.id for p in self.shelf(OFFER))
+
+    def want_page_line(self, have_text: str) -> str:
+        offered = [i for i in have_text.split(",") if i]
+        missing = [i for i in offered
+                   if i not in self.pages and i not in self.read_pages]
+        return WANT_PAGE + "|" + ",".join(missing[:2])
+
+    def ask_line(self) -> str:
+        """Pages somebody has pointed at that nobody has carried here.
+
+        Everything else in hearsay is offered rather than requested, which
+        works for things people write and not at all for a link you followed
+        to a page that never arrived.
+        """
+        return ASK_PAGE + "|" + ",".join(sorted(self.asked_for)[:4])
+
+    def answer_asked(self, asked_text: str, carrier: str,
+                     limit: int = GIVE_PAGES_PER_MEETING) -> list:
+        """Hand over a named page, if this node happens to hold it."""
+        out = []
+        for at in (x for x in asked_text.split(",") if x):
+            page = self.page_at(at)
+            if page is None:
+                continue
+            out.append(GIVE_PAGE + "|" + page.carried_by(carrier).to_wire())
+            if len(out) >= limit:
+                break
+        return out
+
+    def note_wanted(self, at: str) -> None:
+        if at and self.page_at(at) is None and len(self.asked_for) < 16:
+            self.asked_for.add(at)
+
+    def give_page_lines(self, want_text: str, carrier: str,
+                        limit: int = GIVE_PAGES_PER_MEETING) -> list:
+        asked = [i for i in want_text.split(",") if i]
+        out = []
+        for page_id in asked:
+            page = self.pages.get(page_id)
+            if page is None:
+                continue
+            out.append(GIVE_PAGE + "|" + page.carried_by(carrier).to_wire())
+            if len(out) >= limit:
+                break
+        return out
 
     def face_lines(self, mine=None, limit: int = 3) -> list:
         """Faces worth offering at a meeting: ours first, then a few others we
@@ -192,7 +301,11 @@ class Store:
                 self.add(post)
         for line in raw.get("faces", []):
             self.meet_face(Profile.from_wire(line))
+        for line in raw.get("pages", []):
+            self.shelve(Page.from_wire(line))
         self.seen.update(raw.get("seen", []))
+        self.read_pages.update(raw.get("read", []))
+        self.asked_for.update(raw.get("asked", []))
         return self
 
     def save(self) -> None:
@@ -204,6 +317,9 @@ class Store:
             "posts": [p.to_wire() for p in self.recent(HOLD)],
             "faces": [f.to_wire() for f in self.faces.values()],
             "seen": sorted(self.seen)[-HOLD * 4:],
+            "pages": [p.to_wire() for p in self.shelf()],
+            "read": sorted(self.read_pages)[-HOLD_PAGES * 4:],
+            "asked": sorted(self.asked_for),
         }, separators=(",", ":"))
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)

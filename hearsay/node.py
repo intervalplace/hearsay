@@ -29,9 +29,11 @@ from loraline.session import AppEvent, MessageEvent, SystemEvent
 from loraline.transport import (Link, LoRaInterface, RadioConfig,
                                 TCPClientInterface, TCPServerInterface)
 
+from .page import Page, write as write_page
 from .post import Post, write
 from .profile import Profile, describe, from_image
-from .store import FACE, GIVE, HAVE, Store, WANT
+from .store import (ASK_PAGE, FACE, GIVE, GIVE_PAGE, HAVE, PAGES, Store,
+                    WANT, WANT_PAGE)
 
 APP = "hearsay"
 BANDS = {"eu868": dict(channel=18, sf=7, power=8, duty=0.01),
@@ -108,6 +110,12 @@ class Node:
         self.queue(self.store.have_line())
         for line in self.store.face_lines(self.me):
             self.queue(line)
+        # Pages are offered as a list of ids like posts are, and are only ever
+        # sent when somebody asks. One is ten minutes of owed silence.
+        if self.store.pages:
+            self.queue(self.store.pages_line())
+        if self.store.asked_for:
+            self.queue(self.store.ask_line())
 
     def heard(self, src: str, payload: str) -> None:
         """Somebody said something in our language."""
@@ -135,6 +143,31 @@ class Node:
                 self.note(f"{who}: {post.body}{trail}", "post")
             elif not post.verify():
                 self.note(f"a post arrived that does not check out, from {src}", "warn")
+
+        elif kind == PAGES:
+            want = self.store.want_page_line(body)
+            if want.split("|", 1)[1]:
+                self.queue(want)
+
+        elif kind == ASK_PAGE:
+            for line in self.store.answer_asked(body, self.client.session.address):
+                self.queue(line)
+
+        elif kind == WANT_PAGE:
+            for line in self.store.give_page_lines(body, self.client.session.address):
+                self.queue(line)
+
+        elif kind == GIVE_PAGE:
+            page = Page.from_wire(body)
+            if page is None:
+                return
+            if self.store.shelve(page):
+                self.dirty = True
+                who = self.who(page.author)
+                self.note(f"a page arrived: {page.title} \u2014 {who}", "post")
+            elif not page.verify():
+                self.note(f"a page arrived that does not check out, from {src}",
+                          "warn")
 
         elif kind == FACE:
             face = Profile.from_wire(body)
@@ -169,17 +202,49 @@ class Node:
 
     # -- what a person does ------------------------------------------------
 
-    def say(self, body: str) -> bool:
-        """Write something. It goes out at once and then waits to be asked
-        for by everybody who was not listening."""
+    def ask_for(self, at: str) -> bool:
+        """Put a page on the list of things to ask about at the next meeting."""
+        before = len(self.store.asked_for)
+        self.store.note_wanted(at)
+        if len(self.store.asked_for) == before:
+            return False
+        self.dirty = True
+        self.note(f"Asking after {at} when somebody comes near.", "muted")
+        return True
+
+    def put(self, name: str, title: str, body: str) -> bool:
+        """Write a page. It sits on your shelf and is offered from then on."""
         try:
-            post = write(self.identity, body)
+            page = write_page(self.identity, name, title, body)
+        except ValueError:
+            return False
+        if not self.store.shelve(page):
+            return False
+        self.dirty = True
+        self.note(f"You wrote {page.at}.", "mine")
+        return True
+
+    def say(self, body: str, answers: str = "") -> bool:
+        """Write something. It goes out at once and then waits to be asked
+        for by everybody who was not listening.
+
+        `answers` is the id of a post this replies to. Six characters, signed
+        along with the words, and free: it rides inside a frame that was going
+        out anyway.
+        """
+        try:
+            post = write(self.identity, body, answers=answers)
         except ValueError:
             return False
         if not self.store.add(post):
             return False
         self.dirty = True
-        self.note(f"{self.me.name}: {post.body}", "mine")
+        if post.answers:
+            to = self.store.by_id(post.answers)
+            who = self.who(to.author) if to else "somebody"
+            self.note(f"{self.me.name} to {who}: {post.body}", "mine")
+        else:
+            self.note(f"{self.me.name}: {post.body}", "mine")
         self.queue(GIVE + "|" + post.to_wire())
         return True
 
@@ -207,12 +272,20 @@ def snapshot(node: "Node", now: float) -> dict:
     feed = []
     for post in node.store.feed(40):
         face = node.store.face_of(post.author)
+        # What it answers, if that post is still held. Three hops away it
+        # often is not, and saying so is better than pretending a reply was
+        # never a reply.
+        to = node.store.by_id(post.answers) if post.answers else None
         feed.append({
+            "id": post.id,
             "author": post.author,
             "name": face.name if face else post.author,
             "body": post.body,
             "age": max(0, int(now - post.written)),
             "hops": [node.who(h) for h in post.hops],
+            "answers": post.answers,
+            "to": ({"name": node.who(to.author), "body": to.body}
+                   if to else ({"name": "", "body": ""} if post.answers else None)),
             "face": {"pixels": (face.pixels if face else []),
                      "colours": list(face.colours) if face else []},
         })

@@ -138,6 +138,17 @@ h1 svg{width:1.1em;height:1.1em;color:var(--red)}
 .tally{font-family:var(--mono);font-size:.72rem;color:var(--faint);text-align:right}
 form.say{display:flex;gap:.5rem;margin:1rem 0 .3rem}
 input,textarea,button{font:inherit}
+#writer{margin:.8rem 0;border-top:1px solid var(--rule);padding-top:.7rem}
+#writer summary{cursor:pointer;color:var(--red);font-size:.9rem}
+#writer label{display:block;font-size:.8rem;color:var(--faint);margin:.6rem 0 0}
+#writer input,#writer textarea{width:100%;background:var(--panel);
+  border:1px solid var(--rule);color:var(--ink);padding:.35rem .45rem;
+  border-radius:2px;font-size:.9rem;margin-top:.15rem}
+#writer textarea{font-family:var(--mono);font-size:.82rem;line-height:1.5;
+  margin-top:.6rem;resize:vertical}
+.prow{display:flex;gap:.7rem;align-items:baseline;margin-top:.5rem}
+.prow button{background:var(--panel);border:1px solid var(--rule);
+  color:var(--ink);padding:.3rem .8rem;border-radius:2px;cursor:pointer}
 textarea{flex:1;resize:none;height:3.1rem;background:#fff;border:1px solid var(--rule);
          color:var(--ink);padding:.5rem .6rem;border-radius:3px;font-size:.95rem;min-width:0}
 textarea:focus{outline:2px solid var(--red);outline-offset:1px}
@@ -177,6 +188,21 @@ h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;
   <div class="tally" id="tally"></div>
 </header>
 
+<details id="writer">
+  <summary>write a page</summary>
+  <label>a short name <input id="pname" maxlength="32" placeholder="bread"></label>
+  <label>the title <input id="ptitle" maxlength="64" placeholder="Bread"></label>
+  <textarea id="pbody" rows="9" placeholder="# Bread&#10;&#10;Thursdays, from about seven, until it is gone.&#10;&#10;=&gt; tides the tide table"></textarea>
+  <div class="prow">
+    <button type="button" onclick="putPage()">put it on the shelf</button>
+    <span id="pcount" class="hint"></span>
+  </div>
+  <p class="hint">Four kilobytes at most, six kinds of line:
+    <a href="/page/here/writing">how to write one</a>. A name you have used
+    before replaces that page everywhere it has reached.</p>
+</details>
+
+<p id="replying"></p>
 <form class="say" id="say">
   <textarea id="text" maxlength="140" placeholder="say something"></textarea>
   <button>post</button>
@@ -245,10 +271,16 @@ function render(){
         <div class="who"><b>${escaped(p.name)}</b>
           <span class="addr">${p.author}</span>
           <span class="when">${ago(p.age)}</span></div>
+        ${p.answers ? (p.to && p.to.body
+            ? `<div class="answering"><b>${escaped(p.to.name)}</b> ${escaped(p.to.body)}</div>`
+            : `<div class="answering gone">answering something that has not
+               reached this node</div>`) : ''}
         <div class="body">${escaped(p.body)}</div>
         <div class="trail ${p.hops.length ? '' : 'direct'}">${
           p.hops.length ? 'carried by ' + p.hops.map(escaped).join(', ')
-                        : 'heard directly'}</div>
+                        : 'heard directly'}<button class="reply"
+          onclick="replyTo('${p.id}', '${escaped(p.name).replace(/'/g, "\\'")}')"
+          >reply</button></div>
       </div>
     </article>`).join('') || '<p class="aside">Nothing yet. Anything you post waits here until somebody comes within earshot.</p>';
 
@@ -285,8 +317,12 @@ const send = line => {
 document.getElementById('say').onsubmit = e => {
   e.preventDefault();
   const box = document.getElementById('text');
-  if(box.value.trim()) send('say ' + box.value.trim());
+  if(box.value.trim()){
+    if(answering) post({do:'reply', to: answering, text: box.value.trim()});
+    else send('say ' + box.value.trim());
+  }
   box.value = '';
+  stopReplying();
 };
 document.getElementById('rename').onclick = () =>
   send('name ' + document.getElementById('myname').value.trim());
@@ -299,6 +335,48 @@ document.getElementById('rename').onclick = () =>
    thing that is going to throw away all but a thousand pixels of it. Two
    hundred and fifty six square is far more than the reduction can use, so it
    cannot change the outcome. */
+const body = () => document.getElementById('pbody');
+
+/* Which post, if any, the next thing you write is an answer to. */
+let answering = null;
+
+function replyTo(id, name){
+  answering = id;
+  const strip = document.getElementById('replying');
+  strip.style.display = 'block';
+  strip.innerHTML = `answering <b>${name}</b>`
+    + `<button type="button" onclick="stopReplying()">not any more</button>`;
+  document.getElementById('text').focus();
+}
+
+function stopReplying(){
+  answering = null;
+  document.getElementById('replying').style.display = 'none';
+}
+
+function putPage(){
+  const name = document.getElementById('pname').value.trim();
+  const title = document.getElementById('ptitle').value.trim();
+  const text = body().value;
+  if(!name || !text.trim()){
+    document.getElementById('pcount').textContent = 'it needs a name and something on it';
+    return;
+  }
+  post({do:'put', name, title, text});
+  document.getElementById('pname').value = '';
+  document.getElementById('ptitle').value = '';
+  body().value = '';
+  document.getElementById('writer').open = false;
+}
+
+/* Four kilobytes is not a number anybody can feel, so show what is left. */
+document.addEventListener('input', ev => {
+  if(ev.target.id !== 'pbody') return;
+  const left = 4096 - ev.target.value.length;
+  document.getElementById('pcount').textContent =
+    left < 0 ? `${-left} too many` : `${left} characters left`;
+});
+
 document.getElementById('pick').onchange = ev => {
   const file = ev.target.files[0];
   if(!file) return;

@@ -50,6 +50,7 @@ class Post:
     signature: str = ""       # base64, over the canonical bytes
     keys: tuple = ()          # the author's two public halves, for strangers
     hops: tuple = ()          # who has carried it, in order, as a claim
+    answers: str = ""         # the id of the post this replies to, if any
 
     # -- identity ----------------------------------------------------------
 
@@ -57,13 +58,21 @@ class Post:
         """Exactly what gets signed. The hops are not in it: they change every
         time the post moves, and a signature that had to be redone at every
         pair of hands would not survive the first stranger."""
+        # What it answers is signed along with the words. Otherwise a carrier
+        # could attach somebody's reply to a different question, which is a
+        # cheap way to make anybody appear to have said something unpleasant.
         return SEPARATOR.join(
-            ("1", self.author, str(self.written), self.body)
+            ("1", self.author, str(self.written), self.body, self.answers)
         ).encode("utf-8")
 
     @property
     def id(self) -> str:
-        """Six hex characters. Long enough that two posts colliding in a store
+        """Six hex characters, which is about the document rather than the
+        person: an id says which page or post, in a pocket of a few hundred,
+        and nothing is ever checked against it. An address is what a signature
+        is checked against, which is why that one is sixteen.
+
+        Long enough that two posts colliding in a store
         of a few hundred is a one in a thousand event, short enough that a list
         of forty of them still fits in a frame or two."""
         return hashlib.blake2b(self.canonical(), digest_size=3).hexdigest()
@@ -125,7 +134,7 @@ class Post:
             "1", self.author, str(self.written), self.body,
             self.signature, self.keys[0] if self.keys else "",
             self.keys[1] if len(self.keys) > 1 else "",
-            ",".join(self.hops),
+            ",".join(self.hops), self.answers,
         ))
 
     @classmethod
@@ -136,12 +145,26 @@ class Post:
         if not bits[2].isdigit():
             return None
         hops = tuple(h for h in bits[7].split(",") if h)
+        # Posts written before replies existed have eight fields, not nine.
+        answers = bits[8] if len(bits) > 8 else ""
         return cls(author=bits[1], written=int(bits[2]), body=bits[3],
                    signature=bits[4], keys=(bits[5], bits[6]),
-                   hops=hops[:HOP_LIMIT])
+                   hops=hops[:HOP_LIMIT], answers=_an_id(answers))
 
 
-def write(identity, body: str, when: float | None = None) -> Post:
+def _an_id(text: str) -> str:
+    """An id or nothing at all.
+
+    Sieving out the non-hex characters turned "zz;drop table" into "dabe",
+    which is not an id anybody meant and happens to look like one.
+    """
+    text = (text or "").strip().lower()
+    ok = len(text) == 6 and all(c in "0123456789abcdef" for c in text)
+    return text if ok else ""
+
+
+def write(identity, body: str, when: float | None = None,
+          answers: str = "") -> Post:
     """Compose and sign. Refuses an empty one rather than putting nothing on
     the air at eighty-seven seconds a time."""
     text = _clean(body)
@@ -149,5 +172,6 @@ def write(identity, body: str, when: float | None = None) -> Post:
         raise ValueError("nothing to say")
     post = Post(author=identity.address,
                 written=int(when if when is not None else time.time()),
-                body=text)
+                body=text,
+                answers=_an_id(answers))
     return post.sign(identity)
