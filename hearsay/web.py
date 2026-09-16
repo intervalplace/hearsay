@@ -403,6 +403,16 @@ document.getElementById('pick').onchange = ev => {
   ev.target.value = '';
 };
 
-new EventSource('/events').onmessage = m => { state = JSON.parse(m.data); render(); };
+/* Standalone, the node publishes its own snapshot and this is the whole of
+   it. Hosted by loraline, every panel's snapshot is nested under its tag, and
+   reading the outer object gave undefined for everything while the buttons
+   quietly worked. */
+new EventSource('/events').onmessage = m => {
+  const all = JSON.parse(m.data);
+  state = all.hearsay || all;
+  if(state.broken){ document.getElementById('feed').innerHTML =
+    '<p class="aside">hearsay could not draw itself: ' + escaped(state.broken) + '</p>'; }
+  render();
+};
 </script></body></html>
 """
