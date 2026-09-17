@@ -62,6 +62,7 @@ class Node:
     held_back: int = 0
     dirty: bool = False
     last_save: float = 0.0
+    greeted: set = field(default_factory=set)   # who was in range last time
 
     # -- saying things -----------------------------------------------------
 
@@ -103,8 +104,14 @@ class Node:
         and a second copy of the same list would be pure waste.
         """
         peers = self.client.session.online_peers()
+        # Somebody who has just walked into range should not wait out the rest
+        # of a ninety second cycle before hearing what anybody is holding.
+        # Two people in a room watching nothing happen assume it is broken.
+        here = {p.address for p in peers}
+        arrived = here - self.greeted
+        self.greeted = here
         gap = OFFER_EVERY if peers else QUIET_OFFER
-        if now - self.last_offer.get(GROUP, 0.0) < gap:
+        if not arrived and now - self.last_offer.get(GROUP, 0.0) < gap:
             return
         self.last_offer[GROUP] = now
         self.queue(self.store.have_line())
@@ -295,6 +302,9 @@ def snapshot(node: "Node", now: float) -> dict:
         "peers": len(node.client.session.online_peers()),
         "airtime": f"{left:.0f} s",
         "waiting": len(node.outbox),
+        # Whether the silence is nobody being there or no airtime left. They
+        # look identical on the page and mean opposite things.
+        "held_back": node.held_back,
         "me": {"author": node.me.author, "name": node.me.name,
                "face": {"pixels": node.me.pixels,
                         "colours": list(node.me.colours)}},

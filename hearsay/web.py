@@ -224,6 +224,7 @@ h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;
 <p class="note" id="mynote"></p>
 
 <h2>on the air</h2>
+<p class="aside" id="queue"></p>
 <div id="log" class="left"></div>
 </div>
 <script>
@@ -263,6 +264,15 @@ function render(){
   const left = document.getElementById('left');
   left.innerHTML = `<b>${state.airtime}</b> of the hour left`
     + (state.waiting ? ` &middot; ${state.waiting} line(s) waiting for it` : '');
+
+  /* Nothing happening looks the same whether nobody is there or there is no
+     radio time left, and those mean opposite things. */
+  const q = document.getElementById('queue');
+  if(q){
+    q.textContent = state.waiting
+      ? `${state.waiting} line(s) waiting for radio time.`
+      : '';
+  }
 
   document.getElementById('feed').innerHTML = (state.feed||[]).map((p, i) => `
     <article>
