@@ -454,4 +454,18 @@ assert Store().answer_asked("ffffffffffffffff/nope", "x") == []
 assert not seeker.ask_line().split("|", 1)[1]
 ok("asking after something nobody holds costs one short line and no more")
 
+
+# ---------- somebody arriving is greeted at once ----------
+_early = Store()
+_greeter = None
+# Two people in a room watching nothing happen assume it is broken, so a node
+# that has just seen a new address offers what it holds without waiting out
+# the rest of a ninety second cycle.
+import inspect as _ins
+from hearsay import node as _nodemod
+_src = _ins.getsource(_nodemod.Node.offer)
+assert "arrived" in _src and "self.greeted" in _src
+assert "if not arrived and now - self.last_offer" in _src
+ok("a node greets somebody who has just come into range, without waiting")
+
 print(f"\nALL PASS  ({PASSED} checks)")
