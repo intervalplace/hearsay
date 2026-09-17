@@ -468,4 +468,42 @@ assert "arrived" in _src and "self.greeted" in _src
 assert "if not arrived and now - self.last_offer" in _src
 ok("a node greets somebody who has just come into range, without waiting")
 
+
+# ---------- the shelf can be reached by clicking ----------
+from hearsay.web import PAGE as _FEED
+# It had nothing pointing at it, so the only way to read a page was to type an
+# address by hand, and a page nobody can reach is a page nobody has.
+assert 'href="/pages"' in _FEED, "the feed must link to the shelf"
+_shelf_markup = SHELF if "SHELF" in dir() else __import__(
+    "hearsay.panel", fromlist=["SHELF"]).SHELF
+assert 'href="/hearsay"' in _shelf_markup, "and the shelf back to the feed"
+ok("the shelf is reachable from the feed, and the feed from the shelf")
+
+
+# ---------- a page names itself ----------
+from hearsay.page import heading_of as _head, name_from as _slug
+
+# Being asked for a name, a title, and a body beginning with a heading was the
+# same word three times, and the reader only ever draws the heading.
+assert _head("# Bread\n\nThursdays.") == "Bread"
+assert _head("no heading at all") == ""
+assert _slug("Bread") == "bread"
+# Blanking anything not a letter turned "brød" into "br-d", which is not a
+# word anybody meant.
+assert _slug("Brød og fisk") == "brod-og-fisk"
+assert _slug("Fjærstranda i går") == "fjaerstranda-i-gaar"
+ok("a page takes its title from its first heading, and its name from that")
+
+_derived = write_page(hank, _slug(_head("# Bread\n\nThursdays.")),
+                      _head("# Bread\n\nThursdays."), "# Bread\n\nThursdays.")
+assert _derived.name == "bread" and _derived.title == "Bread"
+assert _derived.verify()
+ok("and one written that way signs and verifies like any other")
+
+# the browser works the name out too, and has to get the same answer
+_page_js = open("hearsay/web.py").read()
+for _pair in ("'æ':'ae'", "'ø':'o'", "'å':'aa'"):
+    assert _pair in _page_js, _pair
+ok("the editor uses the same letters, so what it promises is what is stored")
+
 print(f"\nALL PASS  ({PASSED} checks)")

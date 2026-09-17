@@ -101,6 +101,21 @@ somebody actually wrote.
 A written page can link into them with `=> here/writing`, which resolves to
 the reader's own copy.
 
+## A page names itself
+
+You write the text. Its first heading is its title, and the name it is found
+by comes from that: `# Brød` becomes `brod`, which is what a link points at.
+
+Being asked for a name, a title, and a body that begins with a heading was the
+same word three times, and the reader only ever drew the heading anyway.
+
+Names keep to letters, digits and hyphens because they go in addresses. The
+awkward letters are spelled out rather than blanked, so `brød` is `brod` and
+not `br-d`, which is not a word anybody meant.
+
+The editor shows what it will be called as you type, using the same rules the
+node uses, so what it promises is what gets stored.
+
 ## Answering somebody
 
 A post can carry the id of the post it answers: six characters, signed along
