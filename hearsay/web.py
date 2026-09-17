@@ -138,6 +138,10 @@ h1 svg{width:1.1em;height:1.1em;color:var(--red)}
 .tally{font-family:var(--mono);font-size:.72rem;color:var(--faint);text-align:right}
 form.say{display:flex;gap:.5rem;margin:1rem 0 .3rem}
 input,textarea,button{font:inherit}
+/* The shelf had nothing pointing at it, so the only way to read a page was to
+   type its address by hand. */
+.shelflink{margin:.5rem 0 0;font-size:.85rem;color:var(--faint)}
+.shelflink a{color:var(--red)}
 #writer{margin:.8rem 0;border-top:1px solid var(--rule);padding-top:.7rem}
 #writer summary{cursor:pointer;color:var(--red);font-size:.9rem}
 #writer label{display:block;font-size:.8rem;color:var(--faint);margin:.6rem 0 0}
@@ -188,18 +192,21 @@ h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;
   <div class="tally" id="tally"></div>
 </header>
 
+<p class="shelflink"><a href="/pages">everything held</a> &middot; pages people
+have written and carried here</p>
+
 <details id="writer">
   <summary>write a page</summary>
-  <label>a short name <input id="pname" maxlength="32" placeholder="bread"></label>
-  <label>the title <input id="ptitle" maxlength="64" placeholder="Bread"></label>
-  <textarea id="pbody" rows="9" placeholder="# Bread&#10;&#10;Thursdays, from about seven, until it is gone.&#10;&#10;=&gt; tides the tide table"></textarea>
+  <textarea id="pbody" rows="10" placeholder="# Bread&#10;&#10;Thursdays, from about seven, until it is gone.&#10;&#10;=&gt; tides the tide table"></textarea>
   <div class="prow">
     <button type="button" onclick="putPage()">put it on the shelf</button>
     <span id="pcount" class="hint"></span>
   </div>
+  <p class="hint">Its first heading is its title, and becomes the name it is
+    found by: <span id="pwill"></span></p>
   <p class="hint">Four kilobytes at most, six kinds of line:
-    <a href="/page/here/writing">how to write one</a>. A name you have used
-    before replaces that page everywhere it has reached.</p>
+    <a href="/page/here/writing">how to write one</a>. Writing one with a name
+    you have used before replaces it everywhere it has reached.</p>
 </details>
 
 <p id="replying"></p>
@@ -364,18 +371,42 @@ function stopReplying(){
   document.getElementById('replying').style.display = 'none';
 }
 
+/* The same rules the node uses, so what is promised is what is stored. */
+const PLAINER = {'æ':'ae','ø':'o','å':'aa','ä':'a','ö':'o','ü':'u','ß':'ss',
+  'é':'e','è':'e','ê':'e','á':'a','à':'a','â':'a','í':'i','ì':'i','ó':'o',
+  'ò':'o','ô':'o','ú':'u','ù':'u','ñ':'n','ç':'c','ý':'y','þ':'th','ð':'d'};
+
+function headingOf(text){
+  for(const line of (text || '').split('\n')){
+    const t = line.trim();
+    if(t.startsWith('# ')) return t.slice(2).trim().slice(0, 64);
+  }
+  return '';
+}
+
+function nameFrom(title){
+  let out = '';
+  for(const ch of (title || '').toLowerCase()){
+    const plain = PLAINER[ch] !== undefined ? PLAINER[ch] : ch;
+    for(const c of plain){
+      if(/[a-z0-9]/.test(c)) out += c;
+      else if(out && out.slice(-1) !== '-') out += '-';
+    }
+  }
+  return out.replace(/^-+|-+$/g, '').slice(0, 32);
+}
+
 function putPage(){
-  const name = document.getElementById('pname').value.trim();
-  const title = document.getElementById('ptitle').value.trim();
   const text = body().value;
-  if(!name || !text.trim()){
-    document.getElementById('pcount').textContent = 'it needs a name and something on it';
+  const title = headingOf(text);
+  if(!title || !text.trim()){
+    document.getElementById('pcount').textContent =
+      'it needs a heading, a line beginning with #';
     return;
   }
-  post({do:'put', name, title, text});
-  document.getElementById('pname').value = '';
-  document.getElementById('ptitle').value = '';
+  post({do:'put', name: nameFrom(title), title, text});
   body().value = '';
+  document.getElementById('pwill').textContent = '';
   document.getElementById('writer').open = false;
 }
 
@@ -385,6 +416,9 @@ document.addEventListener('input', ev => {
   const left = 4096 - ev.target.value.length;
   document.getElementById('pcount').textContent =
     left < 0 ? `${-left} too many` : `${left} characters left`;
+  const title = headingOf(ev.target.value);
+  document.getElementById('pwill').textContent =
+    title ? `${title} \u00b7 ${nameFrom(title)}` : 'start a line with # to give it one';
 });
 
 document.getElementById('pick').onchange = ev => {

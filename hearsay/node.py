@@ -29,7 +29,7 @@ from loraline.session import AppEvent, MessageEvent, SystemEvent
 from loraline.transport import (Link, LoRaInterface, RadioConfig,
                                 TCPClientInterface, TCPServerInterface)
 
-from .page import Page, write as write_page
+from .page import Page, heading_of, name_from, write as write_page
 from .post import Post, write
 from .profile import Profile, describe, from_image
 from .store import (ASK_PAGE, FACE, GIVE, GIVE_PAGE, HAVE, PAGES, Store,
@@ -219,8 +219,16 @@ class Node:
         self.note(f"Asking after {at} when somebody comes near.", "muted")
         return True
 
-    def put(self, name: str, title: str, body: str) -> bool:
-        """Write a page. It sits on your shelf and is offered from then on."""
+    def put(self, name: str = "", title: str = "", body: str = "") -> bool:
+        """Write a page. It sits on your shelf and is offered from then on.
+
+        The title and the name come from the page's first heading unless you
+        say otherwise. Being asked for a name, a title and a body beginning
+        with a heading was the same word three times, and only the heading is
+        the one anybody actually writes.
+        """
+        title = title.strip() or heading_of(body)
+        name = name.strip() or name_from(title)
         try:
             page = write_page(self.identity, name, title, body)
         except ValueError:

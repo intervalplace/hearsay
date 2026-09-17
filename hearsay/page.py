@@ -125,6 +125,42 @@ class Page:
                    keys=(bits[7], bits[8]), hops=hops[:8])
 
 
+def heading_of(body: str) -> str:
+    """The first heading, which is what the reader draws as the title.
+
+    A page used to be asked for a name, a title and a body that began with a
+    heading, which is the same word three times. The heading is the one people
+    actually write, so the title comes from it.
+    """
+    for line in (body or "").splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()[:64]
+    return ""
+
+
+# A name goes in an address and a link, so it keeps to letters, digits and
+# hyphens. Blanking anything else turned "brød" into "br-d", which is not a
+# word anybody meant; these are the letters most likely to come up.
+PLAINER = str.maketrans({
+    "æ": "ae", "ø": "o", "å": "aa", "ä": "a", "ö": "o", "ü": "u", "ß": "ss",
+    "é": "e", "è": "e", "ê": "e", "á": "a", "à": "a", "â": "a", "í": "i",
+    "ì": "i", "ó": "o", "ò": "o", "ô": "o", "ú": "u", "ù": "u", "ñ": "n",
+    "ç": "c", "ý": "y", "þ": "th", "ð": "d", "ł": "l", "š": "s", "ž": "z",
+})
+
+
+def name_from(title: str) -> str:
+    """A short name out of a heading, for the address a link points at."""
+    keep = []
+    for ch in (title or "").lower().translate(PLAINER):
+        if ch.isascii() and ch.isalnum():
+            keep.append(ch)
+        elif keep and keep[-1] != "-":
+            keep.append("-")
+    return "".join(keep).strip("-")[:32]
+
+
 def write(identity, name: str, title: str, body: str, when=None) -> Page:
     text = _clean_body(body)
     if not text:
