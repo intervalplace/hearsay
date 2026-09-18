@@ -292,7 +292,7 @@ class Store:
         if not self.path.exists():
             return self
         try:
-            raw = json.loads(self.path.read_text())
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
             return self
         for line in raw.get("posts", []):
@@ -324,7 +324,7 @@ class Store:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.path.with_suffix(".tmp")
-            temporary.write_text(body)
+            temporary.write_text(body, encoding="utf-8")
             os.replace(temporary, self.path)
         except OSError:
             pass          # a node that cannot write should still carry
