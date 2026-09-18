@@ -211,9 +211,9 @@ with tempfile.TemporaryDirectory() as room:
     ok("a node picks up what it was carrying when it starts again")
 
     # a file on disk is no more trustworthy than a stranger
-    raw = _json.loads(open(where).read())
+    raw = _json.loads(open(where, encoding="utf-8").read())
     raw["posts"][0] = raw["posts"][0].replace("line 4", "line 9")
-    open(where, "w").write(_json.dumps(raw))
+    open(where, "w", encoding="utf-8").write(_json.dumps(raw))
     tampered = Store().load(where)
     assert len(tampered) == 4, len(tampered)
     assert not any("line 9" in p.body for p in tampered.feed())
@@ -221,7 +221,8 @@ with tempfile.TemporaryDirectory() as room:
 
     missing = Store().load(os.path.join(room, "nothing-here.json"))
     assert len(missing) == 0
-    open(os.path.join(room, "rubbish.json"), "w").write("not json at all")
+    open(os.path.join(room, "rubbish.json"), "w",
+         encoding="utf-8").write("not json at all")
     assert len(Store().load(os.path.join(room, "rubbish.json"))) == 0
     ok("a missing or unreadable pocket starts empty rather than failing")
 
@@ -501,7 +502,7 @@ assert _derived.verify()
 ok("and one written that way signs and verifies like any other")
 
 # the browser works the name out too, and has to get the same answer
-_page_js = open("hearsay/web.py").read()
+_page_js = open("hearsay/web.py", encoding="utf-8").read()
 for _pair in ("'æ':'ae'", "'ø':'o'", "'å':'aa'"):
     assert _pair in _page_js, _pair
 ok("the editor uses the same letters, so what it promises is what is stored")
