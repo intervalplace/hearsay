@@ -507,4 +507,24 @@ for _pair in ("'æ':'ae'", "'ø':'o'", "'å':'aa'"):
     assert _pair in _page_js, _pair
 ok("the editor uses the same letters, so what it promises is what is stored")
 
+
+# ---------- a page says when it was written ----------
+from hearsay.panel import _when as _dated
+import time as _t
+
+# A page can sit on somebody's shelf for weeks before it reaches you, so "the
+# bread is ready Thursday" means nothing without knowing which Thursday.
+_now = _t.time()
+assert "today at" in _dated(int(_now))
+assert _dated(int(_now - 86400)) == "yesterday"
+assert _dated(0) == "undated"
+_old = _dated(int(_now - 400 * 86400))
+assert _old != "undated" and any(c.isdigit() for c in _old), _old
+ok("a page carries the day it was written, and the minute only when it is today")
+
+_panel_src = open("hearsay/panel.py", encoding="utf-8").read()
+assert "_when(held.written)" in _panel_src, "the reader has to show it"
+assert "_when(page.written)" in _panel_src, "and so does the shelf"
+ok("and it shows on the page and in the list of them")
+
 print(f"\nALL PASS  ({PASSED} checks)")
