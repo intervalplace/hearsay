@@ -123,10 +123,7 @@ PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>hearsay</title>
 <style>
-:root{--paper:#f2efe9;--panel:#e8e3d9;--ink:#1b1a18;--soft:#5f5a52;
-      --faint:#8b857b;--rule:#ddd8cf;--red:#b4472f;
-      --serif:ui-serif,Charter,Georgia,serif;
-      --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+:root{/*THEME*/--serif:ui-serif,Charter,Georgia,serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);
      font-size:17px;line-height:1.5}

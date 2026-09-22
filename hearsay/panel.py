@@ -16,6 +16,8 @@ import time
 
 from loraline.host import Panel
 
+import os as _os
+
 from . import manual
 from .node import APP, Node, snapshot
 from .page import Page, to_html
@@ -197,8 +199,7 @@ def _beside_identity() -> str:
 READER = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title><style>
-:root{{--paper:#f2efe9;--ink:#1b1a18;--soft:#5f5a52;--faint:#8b857b;
-  --rule:#ddd8cf;--red:#b4472f;--mono:ui-monospace,Menlo,Consolas,monospace}}
+:root{{/*THEME*/--mono:ui-monospace,Menlo,Consolas,monospace;}}
 body{{margin:0;background:var(--paper);color:var(--ink);
   font:18px/1.6 ui-serif,Charter,Georgia,serif}}
 .page{{max-width:38rem;margin:0 auto;padding:0 1.3rem 5rem}}
@@ -236,6 +237,31 @@ function ask(at){{
 </div></body></html>"""
 
 
+def _when(written: int) -> str:
+    """The date a page was written, plainly.
+
+    The day is what matters and the minute is noise, except today, when the
+    minute is the whole of it.
+    """
+    from datetime import datetime
+    if not written:
+        return "undated"
+    try:
+        made = datetime.fromtimestamp(written)
+    except (OSError, OverflowError, ValueError):
+        return "undated"
+    today = datetime.now()
+    if made.date() == today.date():
+        return made.strftime("today at %H:%M")
+    if (today.date() - made.date()).days == 1:
+        return "yesterday"
+    if made.year == today.year:
+        return made.strftime("%-d %B") if _os.name == "posix" \
+            else made.strftime("%d %B").lstrip("0")
+    return made.strftime("%-d %B %Y") if _os.name == "posix" \
+        else made.strftime("%d %B %Y").lstrip("0")
+
+
 def reader(at: str, held, node) -> str:
     """One page, or an honest account of why there is not one.
 
@@ -261,10 +287,14 @@ def reader(at: str, held, node) -> str:
                  'earshot.</p>' + button,
             trail="")
     who = node.who(held.author)
-    trail = (f"by {escape(who)} ({escape(held.author)}), carried by "
+    # When it was written, which is signed along with the words. A page can
+    # sit on somebody's shelf for weeks before it reaches you, so "the bread
+    # is ready Thursday" means nothing without knowing which Thursday.
+    when = _when(held.written)
+    trail = (f"by {escape(who)} ({escape(held.author)}), {when}, carried by "
              + ", ".join(escape(node.who(h)) for h in held.hops)
              if held.hops else
-             f"by {escape(who)} ({escape(held.author)}), heard directly")
+             f"by {escape(who)} ({escape(held.author)}), {when}, heard directly")
     who_of = lambda address: node.who(address)
     shown = f"{who_of(held.author)}/{held.name}"
     return READER.format(title=escape(held.title), at=escape(shown),
@@ -274,8 +304,7 @@ def reader(at: str, held, node) -> str:
 SHELF = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pages</title><style>
-:root{--paper:#f2efe9;--ink:#1b1a18;--soft:#5f5a52;--faint:#8b857b;
-  --rule:#ddd8cf;--red:#b4472f;--mono:ui-monospace,Menlo,Consolas,monospace}
+:root{/*THEME*/--mono:ui-monospace,Menlo,Consolas,monospace;}
 body{margin:0;background:var(--paper);color:var(--ink);
   font:17px/1.55 ui-serif,Charter,Georgia,serif}
 .page{max-width:38rem;margin:0 auto;padding:0 1.3rem 5rem}
@@ -321,8 +350,7 @@ for(const [id, face] of Object.entries(FACES)){
 BUILTIN = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title><style>
-:root{{--paper:#f2efe9;--ink:#1b1a18;--soft:#5f5a52;--faint:#8b857b;
-  --rule:#ddd8cf;--red:#b4472f;--mono:ui-monospace,Menlo,Consolas,monospace}}
+:root{{/*THEME*/--mono:ui-monospace,Menlo,Consolas,monospace;}}
 body{{margin:0;background:var(--paper);color:var(--ink);
   font:18px/1.6 ui-serif,Charter,Georgia,serif}}
 .page{{max-width:38rem;margin:0 auto;padding:0 1.3rem 5rem}}
@@ -403,7 +431,8 @@ def shelf(node) -> str:
                      if page.hops else "")
             out.append(f'<li><a href="/page/{escape(page.at)}">'
                        f'{escape(page.title)}</a>'
-                       f'<i>{escape(page.name)}{escape(trail)}</i></li>')
+                       f'<i>{_when(page.written)}'
+                       f'{escape(trail)}</i></li>')
         out.append("</ul>")
     return (SHELF.replace("{body}", here + "\n".join(out))
                  .replace("{faces}", json.dumps(faces, separators=(",", ":"))))
